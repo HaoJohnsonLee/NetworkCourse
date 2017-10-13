@@ -1,2 +1,2 @@
 # NetworkCourse
-2017-10 Excises
+2017-10 Exercises
