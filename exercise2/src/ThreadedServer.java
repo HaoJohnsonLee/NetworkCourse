@@ -1,79 +1,49 @@
 import java.io.*;
-import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.Date;
 
 /**
- * @Author: Johnson
- * @Description: Socket http 服务器端
- * @Date: 2017/10/14
+ * Created by Johnson on 2017/10/14.
  */
-public class Server {
+public class ThreadedServer implements Runnable{
+
     private final static int CODE_OK = 200;
     private final static int CODE_NOT_FOUND = 404;
     private final static int CODE_CREATE=201;
     private final static String OK = "OK";
     private final static String NOT_FOUND = "Not Found";
     private final static String CREATE = "Created";
-
     private final static String TYPE_PNG="Content-Type: image/png";
     private final static String TYPE_JPEG="Content-Type: image/jpeg";
     private final static String TYPE_DOC="Content-Type: application/msword";
     private final static String TYPE_HTML="Content-Type: text/html";
     private final static String TYPE_TXT="Content-Type: text/plain";
-    private ServerSocket serverSocket;
-
-
-    public Server(int port) {
+    private Socket socket;
+    public ThreadedServer(Socket socket){
+        this.socket=socket;
+    }
+    @Override
+    public void run() {
+        BufferedReader requestReader = null;
+        StringBuffer requestBuilder = new StringBuffer();
+        OutputStream response = null;
+        if(socket==null){
+            return;
+        }
         try {
-            System.out.println("服务器已打开！"+" 端口: "+port);
-            System.out.println(InetAddress.getLocalHost());
-            serverSocket = new ServerSocket(port);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-    /**
-     * @Author: Johnson
-     * @reruen void
-     * @Description: 监听客户端请求
-     * @Date: 2017/10/14
-     */
-    public void listen() {
-        while (true) {
-            BufferedReader requestReader = null;
-            StringBuilder requestBuilder = new StringBuilder();
-            OutputStream response = null;
-            InputStream request=null;
-            Socket client=null;
-
-            try {
-                client= serverSocket.accept();
-                if(client==null){
-                    continue;
-                }
-                System.out.println("客户端 "+client.getInetAddress().getHostName()+" 已连接！！");
-                request=client.getInputStream();
-                requestReader = new BufferedReader(new InputStreamReader(request));
-                //the first line
-                String line1 = requestReader.readLine();
-                String method = line1.substring(0, line1.indexOf('/'));
-                if (method.equalsIgnoreCase("GET ")) {
-                    response = client.getOutputStream();
-                    GETHandler(requestReader, line1, response);
-                }else if(method.equalsIgnoreCase("PUT ")){
-                    response = client.getOutputStream();
-                    PUTHandler(request, line1, response);
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }finally {
-                Client.closeReader(requestReader);
-                Client.closeSocket(client);
+            requestReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            //the first line
+            String line1 = requestReader.readLine();
+            String method = line1.substring(0, line1.indexOf('/'));
+            if (method.equalsIgnoreCase("GET ")) {
+                response = socket.getOutputStream();
+                GETHandler(requestReader, line1, response);
             }
+        }catch (IOException ioe){
+            ioe.printStackTrace();
         }
     }
+
     /**
      * @Author: Johnson
      * @param requestReader 请求字符读取对象
@@ -85,34 +55,31 @@ public class Server {
      */
     private void GETHandler(BufferedReader requestReader, String line1, OutputStream out) {
         FileInputStream fileResponse = null;
-        StringBuilder responseHeader = new StringBuilder("HTTP/1.0 ");
+        StringBuffer responseHeader = new StringBuffer("HTTP/1.0 ");
         File resource = null;
-        byte[] data=null;
+        byte[] data = null;
         try {
             //String temp = requestReader.readLine();
             String path = line1.substring(line1.indexOf('/') + 1, line1.lastIndexOf('/') - 5);
-            String fileFormate=path.substring(path.lastIndexOf('.')+1);
+            String fileFormate = path.substring(path.lastIndexOf('.') + 1);
             resource = new File(path);
             if (!resource.exists()) {
                 throw new IOException("File not found");
             }
             responseHeader.append(CODE_OK).append(" ").append(OK).append(Client.NEWLINE);
-
             //判断文件类型，添加适当内容
-            if(fileFormate.equalsIgnoreCase("png")){
+            if (fileFormate.equalsIgnoreCase("png")) {
                 responseHeader.append(TYPE_PNG).append(Client.NEWLINE);
-            }else if(fileFormate.equalsIgnoreCase("jpg")||fileFormate.equalsIgnoreCase("jpeg")){
+            } else if (fileFormate.equalsIgnoreCase("jpg") || fileFormate.equalsIgnoreCase("jpeg")) {
                 responseHeader.append(TYPE_JPEG).append(Client.NEWLINE);
-            }
-            else if(fileFormate.equalsIgnoreCase("doc")||fileFormate.equalsIgnoreCase("docx")){
+            } else if (fileFormate.equalsIgnoreCase("doc") || fileFormate.equalsIgnoreCase("docx")) {
                 responseHeader.append(TYPE_DOC).append(Client.NEWLINE);
-            }else if(fileFormate.equalsIgnoreCase("htm")||fileFormate.equalsIgnoreCase("html")){
+            } else if (fileFormate.equalsIgnoreCase("htm") || fileFormate.equalsIgnoreCase("html")) {
                 responseHeader.append(TYPE_HTML).append(Client.NEWLINE);
-            }else if(fileFormate.equalsIgnoreCase("txt")){
+            } else if (fileFormate.equalsIgnoreCase("txt")) {
                 responseHeader.append(TYPE_TXT).append(Client.NEWLINE);
             }
-            //响应日期
-            responseHeader.append("Date: ").append(new Date()).append(Client.NEWLINE);
+
             //添加文件长度
             responseHeader.append("Content-Length: ").append(resource.length()).append(Client.NEWLINE);
             responseHeader.append(Client.NEWLINE);
@@ -128,7 +95,7 @@ public class Server {
             try {
                 //写入头信息
                 out.write(responseHeader.toString().getBytes());
-                if(data!=null){
+                if (data != null) {
                     out.write(data);
                 }
                 Client.closeOutputStream(out);
@@ -140,22 +107,24 @@ public class Server {
             }
         }
     }
+
+
     /**
      * @Author: Johnson
      * @param request 客户端请求
-      * @param line1 第一行
+     * @param line1 请求头第一行
      * @param out 服务器响应
-     * @Description: 处理客户端PUT请求
+     * @Description: 处理客户端PUT请求，并响应
      * @Date: 2017/10/14
      */
     private void PUTHandler(InputStream request, String line1, OutputStream out){
         BufferedReader requestReader = new BufferedReader(new InputStreamReader(request));
-        StringBuilder response=new StringBuilder("HTTP/1.0 ").append(CODE_CREATE).
+        StringBuffer response=new StringBuffer("HTTP/1.0 ").append(CODE_CREATE).
                 append(" ").append(CREATE).append(Client.NEWLINE);
         String path=line1.split(" ")[1];
         FileOutputStream fos=null;
         try{
-            String type=null,lengthStr=null;
+            String type=null,lengthStr=null,host=null;
             //读取文件头
             String temp;
             while((temp=requestReader.readLine())!=null){
@@ -163,6 +132,8 @@ public class Server {
                     type=temp.split(" ")[1];
                 }else if(temp.startsWith("Content-Length: ")){
                     lengthStr=temp.split(" ")[1];
+                }else if(temp.startsWith("Host: ")){
+                    host=temp.split(" ")[1];
                 }
             }
             if(lengthStr==null){
@@ -182,11 +153,11 @@ public class Server {
                 fos.write(tempBytes,0,readLength);
             }
             //返回响应
-            response.append("location: ").append("http://").append(serverSocket.getInetAddress().getHostName()).append(path).append(Client.NEWLINE);
+            response.append("location: ").append("http://").append(host).append(path).append(Client.NEWLINE);
             response.append("Content-Type: ").append(type).append(Client.NEWLINE);
             response.append("Content-Length: ").append(file.length()).append(Client.NEWLINE);
             response.append(Client.NEWLINE);
-            response.append(serverSocket.getInetAddress().getHostName()).append(path);
+            response.append(host).append(path);
             out.write(response.toString().getBytes());
             out.flush();
         }catch (IOException ioe){
